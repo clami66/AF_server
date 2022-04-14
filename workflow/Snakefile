@@ -1,4 +1,17 @@
-# Main entrypoint of the workflow. 
-# Please follow the best practices: 
-# https://snakemake.readthedocs.io/en/stable/snakefiles/best_practices.html,
-# in particular regarding the standardized folder structure mentioned there. 
+## Include rules/common first as this file only defines input target
+## functions and common configuration for the workflow
+include: "rules/common.smk" 
+
+##############################
+## Report
+##############################
+report: "report/workflow.rst"
+
+
+# Allow users to fix the underlying OS via singularity.
+container: "docker://continuumio/miniconda3"
+
+
+rule all:
+    input:
+        unpack(all_input),
