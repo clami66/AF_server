@@ -1,0 +1,19 @@
+# Example profile file. See
+# https://snakemake.readthedocs.io/en/stable/executing/cli.html?highlight=profile#profiles
+# for an introduction to Snakemake profiles and
+# https://github.com/Snakemake-Profiles for a collection of profiles
+# targeting various computing environments
+
+restart-times: 1
+max-jobs-per-second: 1
+max-status-checks-per-second: 10
+local-cores: 1
+latency-wait: 60
+rerun-incomplete: true
+
+##############################
+# Resources; fine-tune at will
+##############################
+default-resources:
+  - runtime=240
+  - ntasks=16

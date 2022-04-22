@@ -8,10 +8,41 @@ include: "rules/common.smk"
 report: "report/workflow.rst"
 
 
-# Allow users to fix the underlying OS via singularity.
-container: "docker://continuumio/miniconda3"
-
-
+checkpoint check_mail:
+    input:
+        unpack(emails),
+        
 rule all:
     input:
-        unpack(all_input),
+        unpack(af_targets)        
+
+rule run_alphafold:
+    input:
+        fasta="results/targets/{target}/{target}.fasta"
+    output:
+        models="results/AF_models/{target}/models.txt"
+    params:
+        alphafold=f"{config["AF_install_dir"]}/run_alphafold.py",
+        flagfile=lambda wildcards: config["monomer_flagfile"] if is_monomer(f"results/targets/{wildcards.target}/{wildcards.target}.fasta") else config["multimer_flagfile"]
+    resources:
+        ntasks=lambda wildcards: get_n_cores(f"results/targets/{wildcards.target}/{wildcards.target}.fasta")
+    message:
+        "RUNNING ALPHAFOLD ON {resources.ntasks} CORES"
+    shell:
+        "mkdir -p results/AF_models/{wildcards.target};"
+        "echo {params.alphafold} --flagfile {params.flagfile} --output_dir results/AF_models --fasta_paths {input.fasta} > {output.models}"
+
+rule send_results:
+    input:
+        email_file="results/targets/{target}/mail_results_to",
+        models="results/AF_models/{target}/models.txt"
+    output:
+        email_sent="results/targets/{target}/.email_sent"
+
+rule touch:
+    input:
+        models="results/AF_models/{target}/models.txt"
+    output:
+        done="results/targets/{target}/ranking_debug.json"
+    shell:
+        "touch {output.done}"
