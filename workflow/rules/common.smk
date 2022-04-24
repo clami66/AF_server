@@ -4,105 +4,54 @@ import sys
 import glob
 import email
 import imaplib
-import base64
-import logging
-import mimetypes
-import pickle
+import smtplib
 
 ##### load config #####
 configfile: "config/config.yaml"
+if workflow.use_env_modules:
+    configfile: "config/envmodules.yaml"
+
 envvars:
     "EMAIL_PASS"
 
 def get_messages(whitelist):
     server = config["mail_server"]
-    username = config["mail_username"]
+    username = config["server_address"]
     password = os.environ["EMAIL_PASS"]
     
     emails = []
     email_regex = r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b"
-    # connect to the server and go to its inbox
     mail = imaplib.IMAP4_SSL(server)
     mail.login(username, password)
-    # we choose the inbox but you can select others
-    mail.select('inbox')
+    mail.select("inbox")
 
-    # we'll search using the ALL criteria to retrieve
-    # every message inside the inbox
-    # it will return with its status and a list of ids
-    status, data = mail.search(None, 'ALL')
-    # the list returned is a list of bytes separated
-    # by white spaces on this format: [b'1 2 3', b'4 5 6']
-    # so, to separate it first we create an empty list
+    status, data = mail.search(None, "ALL")
     mail_ids = []
-    # then we go through the list splitting its blocks
-    # of bytes and appending to the mail_ids list
     for block in data:
-        # the split function called without parameter
-        # transforms the text or bytes into a list using
-        # as separator the white spaces:
-        # b'1 2 3'.split() => [b'1', b'2', b'3']
         mail_ids += block.split()
 
-    # now for every id we'll fetch the email
-    # to extract its content
     for i in mail_ids:
-        # the fetch function fetch the email given its id
-        # and format that you want the message to be
-        status, data = mail.fetch(i, '(RFC822)')
+        status, data = mail.fetch(i, "(RFC822)")
 
-        # the content data at the '(RFC822)' format comes on
-        # a list with a tuple with header, content, and the closing
-        # byte b')'
         for response_part in data:
-            # so if its a tuple...
             if isinstance(response_part, tuple):
-                # we go for the content at its second element
-                # skipping the header at the first and the closing
-                # at the third
                 message = email.message_from_bytes(response_part[1])
 
-                # with the content we can extract the info about
-                # who sent the message and its subject
-                sender = message['from']
-                subject = message['subject']
-
-                # then for the text we have a little more work to do
-                # because it can be in plain text or multipart
-                # if its not plain text we need to separate the message
-                # from its annexes to get the text
-                if message.is_multipart():
-                    mail_content = ''
-
-                    # on multipart we have the text message and
-                    # another things like annex, and html version
-                    # of the message, in that case we loop through
-                    # the email payload
+                sender = message["from"]
+                subject = message["subject"]
+            if message.is_multipart():
+                    mail_content = ""
                     for part in message.get_payload():
-                        # if the content type is text/plain
-                        # we extract it
-                        if part.get_content_type() == 'text/plain':
+                        if part.get_content_type() == "text/plain":
                             mail_content += part.get_payload()
-                else:
-                    # if the message isn't multipart, just extract it
-                    mail_content = message.get_payload()
+            else:
+                mail_content = message.get_payload()
 
                 emails.append((sender, subject, mail_content))
     return emails
 
-def check_email_for_new_targets():
-
-    new_targets = []
-    whitelist_file = config["whitelist"]
-    whitelist = [address.strip() for address in open(whitelist_file, "r").readlines()]
-    emails = get_messages(whitelist)
-    
-    for (sender, subject, body) in emails:
-        if "TARGET=" in str(body): # this is a casp target
-            target_name = parse_casp_target(str(body))
-            new_targets.append(target_name)
-    
-    return new_targets
+def is_casp_target(email_body):
+    return "TARGET=" in email_body and "REPLY-E-MAIL=" in email_body
 
 def parse_casp_target(email_body):
     target_name = re.findall("TARGET=([a-zA-Z0-9]+)", email_body)[0]
@@ -145,6 +94,62 @@ def parse_casp_target(email_body):
 
     return target_name
 
+def parse_target(email_body):
+    return "foo" #TODO implement this
+
+def check_email_for_new_targets():
+
+    new_targets = []
+    whitelist_file = config["whitelist"]
+    whitelist = [address.strip() for address in open(whitelist_file, "r").readlines()]
+    emails = get_messages(whitelist)
+    
+    for (sender, subject, body) in emails:
+        if is_casp_target(str(body)):
+            target_name = parse_casp_target(str(body))
+            new_targets.append(target_name)
+        elif ">" in str(body): # this is some other kind of target
+            target_name = parse_target(str(body))
+            new_targets.append(target_name)
+        else: # email from sender in whitelist but not a target?
+            pass
+    
+    return new_targets
+
+def send_email(mail_from, mail_to, mail_subject, mail_body):
+    
+    mail_message = f"""
+    From: {mail_from}
+    To: {mail_to}
+    Subject: {mail_subject}
+
+    {mail_body}
+    """
+    mail_server = config["mail_server"]
+
+    try:
+        server = smtplib.SMTP(mail_server)
+        server.sendmail(mail_from, mail_to, mail_subject, mail_message)
+        server.quit()
+        return True
+    except:
+        return False
+
+def send_acknowledgement(to, target_name):
+    mail_from = config["server_address"]
+    server_name = config["server_name"]
+    
+    mail_subject = f"{target_name} - query received by {server_name}"
+    mail_body = ""
+    mail_to = ', '.join(to)
+
+    success = send_email(mail_from, mail_to, mail_subject, mail_body)
+    return success
+
+def check_fs_for_new_targets():
+    fastas = glob.glob("results/targets/*/*.fasta")
+    return [os.path.basename(fasta).rstrip(".fasta") for fasta in fastas]
+
 def is_monomer(fasta_path):
     n_sequences=0
     with open(fasta_path, "r") as fasta:
@@ -154,9 +159,6 @@ def is_monomer(fasta_path):
                 
     return n_sequences == 1
 
-def check_fs_for_new_targets():
-    fastas = glob.glob("results/targets/*/*.fasta")
-    return [os.path.basename(fasta).rstrip(".fasta") for fasta in fastas]
 
 def get_n_gpus(fasta_file):
     #TODO: check that the n_gpus make sense

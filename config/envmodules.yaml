@@ -1,0 +1,4 @@
+envmodules:
+  run_alphafold:
+    - Anaconda/2021.05-nsc1
+    - buildenv-gcccuda/11.4-8.3.1-bare

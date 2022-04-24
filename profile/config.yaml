@@ -15,5 +15,5 @@ rerun-incomplete: true
 # Resources; fine-tune at will
 ##############################
 default-resources:
-  - runtime=240
+  - runtime=480
   - ntasks=16

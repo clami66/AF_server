@@ -18,19 +18,38 @@ rule all:
 
 rule run_alphafold:
     input:
-        fasta="results/targets/{target}/{target}.fasta"
+        fasta="results/targets/{target}/{target}.fasta",
+        ack="results/targets/{target}/.ack_sent",
     output:
-        models="results/AF_models/{target}/models.txt"
+        models="results/targets/{target}/ranking_debug.json",
     params:
-        alphafold=f"{config["AF_install_dir"]}/run_alphafold.py",
+        alphafold=expand("{install_dir}/run_alphafold.py", install_dir={config["AF_install_dir"]}),
         flagfile=lambda wildcards: config["monomer_flagfile"] if is_monomer(f"results/targets/{wildcards.target}/{wildcards.target}.fasta") else config["multimer_flagfile"]
     resources:
         ntasks=lambda wildcards: get_n_cores(f"results/targets/{wildcards.target}/{wildcards.target}.fasta")
+    conda:
+        "../envs/environment.yaml"
     message:
         "RUNNING ALPHAFOLD ON {resources.ntasks} CORES"
+    log:
+        "logs/alphafold_run/{target}.log",
     shell:
-        "mkdir -p results/AF_models/{wildcards.target};"
-        "echo {params.alphafold} --flagfile {params.flagfile} --output_dir results/AF_models --fasta_paths {input.fasta} > {output.models}"
+        "export TF_FORCE_UNIFIED_MEMORY=1;"
+        "export XLA_PYTHON_CLIENT_MEM_FRACTION=10.0;"
+        "python {params.alphafold} --flagfile {params.flagfile} --output_dir results/AF_models --fasta_paths {input.fasta} &> {log}"
+
+rule send_acknowledgement:
+    input:
+        fasta="results/targets/{target}/{target}.fasta",
+        email_file="results/targets/{target}/mail_results_to",
+    output:
+        ack="results/targets/{target}/.ack_sent"
+    run:
+        from pathlib import Path
+        success = send_acknowledgement({input.email_file})
+        if success:
+            Path(output.ack).touch()
+            
 
 rule send_results:
     input:
@@ -38,11 +57,3 @@ rule send_results:
         models="results/AF_models/{target}/models.txt"
     output:
         email_sent="results/targets/{target}/.email_sent"
-
-rule touch:
-    input:
-        models="results/AF_models/{target}/models.txt"
-    output:
-        done="results/targets/{target}/ranking_debug.json"
-    shell:
-        "touch {output.done}"
