@@ -21,7 +21,7 @@ rule run_alphafold:
         fasta="results/targets/{target}/{target}.fasta",
         ack="results/targets/{target}/.ack_sent",
     output:
-        models="results/targets/{target}/ranking_debug.json",
+        models="results/AF_models/{target}/ranking_debug.json",
     params:
         alphafold=expand("{install_dir}/run_alphafold.py", install_dir={config["AF_install_dir"]}),
         flagfile=lambda wildcards: config["monomer_flagfile"] if is_monomer(f"results/targets/{wildcards.target}/{wildcards.target}.fasta") else config["multimer_flagfile"]
