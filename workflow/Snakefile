@@ -46,7 +46,7 @@ rule send_acknowledgement:
         ack="results/targets/{target}/.ack_sent"
     run:
         from pathlib import Path
-        success = send_acknowledgement({input.email_file}, {wildcards.target})
+        success = send_ack({input.email_file}, {wildcards.target})
         if success:
             Path(output.ack).touch()
             

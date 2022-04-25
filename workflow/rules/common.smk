@@ -132,13 +132,14 @@ def send_email(mail_from, mail_to, mail_subject, mail_body):
 
     try:
         server = smtplib.SMTP(mail_server)
+        print(server)
         server.sendmail(mail_from, mail_to, mail_subject, mail_message)
         server.quit()
         return True
     except:
         return False
 
-def send_acknowledgement(to, target_name):
+def send_ack(to, target_name):
     mail_from = config["server_address"]
     server_name = config["server_name"]
     
