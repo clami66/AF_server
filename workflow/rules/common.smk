@@ -14,13 +14,12 @@ if workflow.use_env_modules:
 envvars:
     "EMAIL_PASS"
 
-def get_messages(whitelist):
+def get_messages():
     server = config["mail_server"]
     username = config["server_address"]
     password = os.environ["EMAIL_PASS"]
-    
+
     emails = []
-    email_regex = r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b"
     mail = imaplib.IMAP4_SSL(server)
     mail.login(username, password)
     mail.select("inbox")
@@ -39,11 +38,11 @@ def get_messages(whitelist):
 
                 sender = message["from"]
                 subject = message["subject"]
-            if message.is_multipart():
-                    mail_content = ""
-                    for part in message.get_payload():
-                        if part.get_content_type() == "text/plain":
-                            mail_content += part.get_payload()
+                if message.is_multipart():
+                        mail_content = ""
+                        for part in message.get_payload():
+                            if part.get_content_type() == "text/plain":
+                                mail_content += part.get_payload()
             else:
                 mail_content = message.get_payload()
 
@@ -81,7 +80,7 @@ def parse_casp_target(email_body):
         
     if fasta:
         try:
-            os.mkdir(f"results/targets/{target_name}")
+            os.makedirs(f"results/targets/{target_name}", exist_ok=True)
         except Exception as a:
             print(a)
         
@@ -102,17 +101,21 @@ def check_email_for_new_targets():
     new_targets = []
     whitelist_file = config["whitelist"]
     whitelist = [address.strip() for address in open(whitelist_file, "r").readlines()]
-    emails = get_messages(whitelist)
+    emails = get_messages()
+    email_regex = r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b"
     
     for (sender, subject, body) in emails:
-        if is_casp_target(str(body)):
-            target_name = parse_casp_target(str(body))
-            new_targets.append(target_name)
-        elif ">" in str(body): # this is some other kind of target
-            target_name = parse_target(str(body))
-            new_targets.append(target_name)
-        else: # email from sender in whitelist but not a target?
-            pass
+        if re.findall(email_regex, sender)[0] in whitelist:
+            if type(body) is list:
+                body = body[0]
+            if is_casp_target(str(body)):
+                target_name = parse_casp_target(str(body))
+                new_targets.append(target_name)
+            elif ">" in str(body): # this is some other kind of target
+                target_name = parse_target(str(body))
+                new_targets.append(target_name)
+            else: # email from sender in whitelist but not a target?
+                pass
     
     return new_targets
 
@@ -196,7 +199,7 @@ def read_json(json_path):
 # Input collection function
 ##############################
 def emails(wildcards):
-    return expand("results/targets/{target}/.done", target=check_email_for_new_targets())
+    return expand("results/targets/{target}/{target}.fasta", target=check_email_for_new_targets())
 
 def af_targets(wildcards):
     return expand("results/AF_models/{target}/ranking_debug.json", target=check_fs_for_new_targets())
