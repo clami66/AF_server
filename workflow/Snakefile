@@ -2,40 +2,52 @@
 ## functions and common configuration for the workflow
 include: "rules/common.smk" 
 
-##############################
-## Report
-##############################
-report: "report/workflow.rst"
+# Only alphafold itself should run on a node with slurm
+localrules: check_mail, send_acknowledgement, add_headers, cat_models, send_results, upload_data
 
+rule all:
+    input:
+        unpack(emails),
+        unpack(af_targets)     
 
 checkpoint check_mail:
     input:
         unpack(emails),
-        
-rule all:
+
+rule run_all_af:
     input:
-        unpack(af_targets)        
+        unpack(af_targets),
+        
+rule upload_all:
+    input:
+        unpack(uploads)
 
 rule run_alphafold:
     input:
         fasta="results/targets/{target}/{target}.fasta",
         ack="results/targets/{target}/.ack_sent",
     output:
-        models="results/AF_models/{target}/ranking_debug.json",
+        model_dir=directory("results/AF_models/{target}"),
+        models="results/AF_models/{target}/ranked_4.pdb",
+        features="results/AF_models/{target}/features.pkl"
     params:
         alphafold=expand("{install_dir}/run_alphafold.py", install_dir={config["AF_install_dir"]}),
         flagfile=lambda wildcards: config["monomer_flagfile"] if is_monomer(f"results/targets/{wildcards.target}/{wildcards.target}.fasta") else config["multimer_flagfile"]
     resources:
-        ntasks=lambda wildcards: get_n_cores(f"results/targets/{wildcards.target}/{wildcards.target}.fasta")
+        ntasks=lambda wildcards: get_n_cores(f"results/targets/{wildcards.target}/{wildcards.target}.fasta"),
+        mem_mb=120000,
+        gpus=lambda wildcards: get_n_gpus(f"results/targets/{wildcards.target}/{wildcards.target}.fasta"),
     conda:
         "../envs/environment.yaml"
     message:
-        "RUNNING ALPHAFOLD ON {resources.ntasks} CORES"
+        "RUNNING ALPHAFOLD ON {resources.ntasks} CORES, {resources.gpus} GPUs"
     log:
         "logs/alphafold_run/{target}.log",
+    benchmark:
+        "benchmarks/alphafold_run/{target}.tsv"
     shell:
         "export TF_FORCE_UNIFIED_MEMORY=1;"
-        "export XLA_PYTHON_CLIENT_MEM_FRACTION=10.0;"
+        "export XLA_PYTHON_CLIENT_MEM_FRACTION={resources.gpus};"
         "python {params.alphafold} --flagfile {params.flagfile} --output_dir results/AF_models --fasta_paths {input.fasta} &> {log}"
 
 rule send_acknowledgement:
@@ -45,15 +57,73 @@ rule send_acknowledgement:
     output:
         ack="results/targets/{target}/.ack_sent"
     run:
-        from pathlib import Path
-        success = send_ack({input.email_file}, {wildcards.target})
+        success = send_ack(input.email_file, wildcards.target)
         if success:
             Path(output.ack).touch()
+
+rule add_headers:
+    input:
+        model_dir="results/AF_models/{target}/",
+        models="results/AF_models/{target}/ranked_4.pdb",
+    output:
+        models="results/AF_models/{target}/ranked_4.header.pdb",
+    params:
+        groupid=config["CASP_groupn"]
+    shell:
+        """
+        i=1
+        for model in {input.model_dir}/ranked_[0-4].pdb; do
+            basename=$(basename $model .pdb)
+            cat > {input.model_dir}/$basename.header.pdb <<- xx
+PFRMAT TS
+TARGET {wildcards.target}
+AUTHOR {params.groupid}
+METHOD Vanilla AlphaFold v2.2
+METHOD Databases as downloaded by AF2 scripts
+MODEL  $i
+PARENT N/A
+xx
             
+            cat $model >> {input.model_dir}/$basename.header.pdb
+            sed -z 's/TER[ A-Z0-9]*\\nATOM/TER\\nPARENT N\/A\\nATOM/g' {input.model_dir}/$basename.header.pdb > {input.model_dir}/$basename.header.ter.pdb
+            mv {input.model_dir}/$basename.header.ter.pdb {input.model_dir}/$basename.header.pdb
+            i=$((i+1))
+        done
+        """
+
+rule cat_models:
+    input:
+        model_dir="results/AF_models/{target}/",
+        models="results/AF_models/{target}/ranked_4.header.pdb",
+    output:
+        models="results/AF_models/{target}/models_to_submit",
+    shell:
+        "cat {input.model_dir}/ranked_*.header.pdb > {output.models}"
 
 rule send_results:
     input:
         email_file="results/targets/{target}/mail_results_to",
-        models="results/AF_models/{target}/models.txt"
+        models="results/AF_models/{target}/models_to_submit",
     output:
         email_sent="results/targets/{target}/.email_sent"
+    run:
+        success = send_models(input.email_file, wildcards.target, input.models)
+        if success:
+            Path(output.email_sent).touch()
+
+rule upload_data:
+    input:
+        data_dir="results/AF_models/{target}"
+    output:
+        data_uploaded="results/targets/{target}/.data_uploaded"
+    params:
+        server_user=config["data_server_user"],
+        server_address=config["data_server_address"],
+        server_folder=config["data_server_folder"],
+    log:
+        "logs/rsync/{target}.log",
+    shell:
+        "tar -zcvf {input.data_dir}/msas.tar.gz {input.data_dir}/msas;"
+        "tar -zcvf {input.data_dir}/models.tar.gz {input.data_dir}/ranked_*.pdb;"
+        "rsync -av {input.data_dir}/msas.tar.gz {input.data_dir}/models.tar.gz {params.server_user}@{params.server_address}:{params.server_folder}/{wildcards.target}/ &> {log};"
+        "touch results/targets/{wildcards.target}/.data_uploaded;"

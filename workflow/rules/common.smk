@@ -2,9 +2,12 @@ import os
 import re
 import sys
 import glob
+import pickle
 import email
 import imaplib
 import smtplib
+from pathlib import Path
+from email.message import EmailMessage
 
 ##### load config #####
 configfile: "config/config.yaml"
@@ -58,7 +61,8 @@ def parse_casp_target(email_body):
     stoichiometry = re.findall("STOICHIOMETRY=([a-zA-Z0-9]+)", email_body)[0] if "STOICHIOMETRY" in email_body else "A1" 
     chain_units = zip(stoichiometry[0::2], stoichiometry[1::2]) # e.g. A3B1 -> [('A', '3'), ('B', '1')]
     
-    heteromer = re.findall(r'(>[a-zA-Z0-9]+.* [|])[\s]+([A-Z]+)', email_body)
+    heteromer = re.findall(r'(>[ a-zA-Z0-9]+.* [|])[\s]+([A-Z]+)', email_body)
+    
     mono_or_homomer = re.findall("SEQUENCE=([A-Z]+)", email_body)
     fasta = []
     
@@ -77,19 +81,21 @@ def parse_casp_target(email_body):
                 fasta.append(this_chain_sequence)
     else:
         print("Wrong query format")
-        
+    print(fasta)    
     if fasta:
         try:
             os.makedirs(f"results/targets/{target_name}", exist_ok=True)
         except Exception as a:
             print(a)
-        
-        with open(f"results/targets/{target_name}/{target_name}.fasta", "w") as out:
-            for line in fasta:
-                out.write(f"{line}\n")
-                
-        with open(f"results/targets/{target_name}/mail_results_to", "w") as out:
-            out.write(f"{reply_email}\n")
+
+        fasta_out = f"results/targets/{target_name}/{target_name}.fasta"
+        if not os.path.isfile(fasta_out): # avoid triggering re-execution if file was already there
+            with open(fasta_out, "w") as out:
+                for line in fasta:
+                    out.write(f"{line}\n")
+                    
+            with open(f"results/targets/{target_name}/mail_results_to", "w") as out:
+                out.write(f"{reply_email}\n")
 
     return target_name
 
@@ -121,31 +127,48 @@ def check_email_for_new_targets():
 
 def send_email(mail_from, mail_to, mail_subject, mail_body):
     
-    mail_message = f"""
-    From: {mail_from}
-    To: {mail_to}
-    Subject: {mail_subject}
-
-    {mail_body}
-    """
-    mail_server = config["mail_server"]
-
+    mail_server = config['mail_server']
+    username = config["server_address"]
+    password = os.environ["EMAIL_PASS"]
+    mail_to_string = ", ".join(mail_to)
+    
+    msg = EmailMessage()
+    msg["From"] = mail_from
+    msg["To"] = mail_to_string
+    msg["Subject"] = mail_subject
+    msg.set_content(mail_body)
+    
     try:
-        server = smtplib.SMTP(mail_server)
-        print(server)
-        server.sendmail(mail_from, mail_to, mail_subject, mail_message)
-        server.quit()
+        mail = smtplib.SMTP(mail_server, 587)
+        mail.connect(mail_server, 587)
+        mail.ehlo()
+        mail.starttls()
+        mail.login(username, password)
+        mail.send_message(msg)
+        mail.quit()
         return True
-    except:
+    except Exception as e:
+        print(e)
         return False
 
-def send_ack(to, target_name):
+def send_ack(to_file, target_name):
     mail_from = config["server_address"]
     server_name = config["server_name"]
     
     mail_subject = f"{target_name} - query received by {server_name}"
     mail_body = ""
-    mail_to = ', '.join(to)
+    mail_to = [address.strip() for address in open(to_file).readlines()]
+
+    success = send_email(mail_from, mail_to, mail_subject, mail_body)
+    return success
+    
+def send_models(to_file, target_name, models):
+    mail_from = config["server_address"]
+    server_name = config["server_name"]
+    
+    mail_subject = f"{target_name}"
+    mail_body = open(models).read()
+    mail_to = [address.strip() for address in open(to_file).readlines()]
 
     success = send_email(mail_from, mail_to, mail_subject, mail_body)
     return success
@@ -153,6 +176,10 @@ def send_ack(to, target_name):
 def check_fs_for_new_targets():
     fastas = glob.glob("results/targets/*/*.fasta")
     return [os.path.basename(fasta).rstrip(".fasta") for fasta in fastas]
+    
+def check_fs_for_data():
+    ended_runs = glob.glob("results/AF_models/*/ranked_4.pdb")
+    return [os.path.basename(os.path.dirname(run)) for run in ended_runs]
 
 def is_monomer(fasta_path):
     n_sequences=0
@@ -203,4 +230,7 @@ def emails(wildcards):
     return expand("results/targets/{target}/{target}.fasta", target=check_email_for_new_targets())
 
 def af_targets(wildcards):
-    return expand("results/AF_models/{target}/ranking_debug.json", target=check_fs_for_new_targets())
+    return expand("results/targets/{target}/.email_sent", target=check_fs_for_new_targets())
+    
+def uploads(wildcards):
+    return expand("results/targets/{target}/.data_uploaded", target=check_fs_for_data())
