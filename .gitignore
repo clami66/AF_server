@@ -4,3 +4,5 @@ logs/**
 .snakemake
 .snakemake/**
 run*.sh
+slurm-*
+benchmarks
