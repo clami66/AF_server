@@ -17,6 +17,8 @@ if workflow.use_env_modules:
 envvars:
     "EMAIL_PASS"
 
+IS_CASP=False
+
 def get_messages():
     server = config["mail_server"]
     username = config["server_address"]
@@ -53,19 +55,21 @@ def get_messages():
     return emails
 
 def is_casp_target(email_body):
-    return "TARGET=" in email_body and "REPLY-E-MAIL=" in email_body
+    IS_CASP = "TARGET=" in email_body
+    return IS_CASP
 
 def parse_casp_target(email_body):
     target_name = re.findall("TARGET=([a-zA-Z0-9]+)", email_body)[0]
-    reply_email = re.findall("REPLY-E-MAIL=([a-zA-Z0-9@.]+)", email_body)[0]
+    reply_email = re.findall("REPLY[\-EMAIL]*=([a-zA-Z0-9@.]+)", email_body)[0]
+
     stoichiometry = re.findall("STOICHIOMETRY=([a-zA-Z0-9]+)", email_body)[0] if "STOICHIOMETRY" in email_body else "A1" 
     chain_units = zip(stoichiometry[0::2], stoichiometry[1::2]) # e.g. A3B1 -> [('A', '3'), ('B', '1')]
-    
+
     heteromer = re.findall(r'(>[ a-zA-Z0-9]+.* [|])[\s]+([A-Z]+)', email_body)
-    
+
     mono_or_homomer = re.findall("SEQUENCE=([A-Z]+)", email_body)
     fasta = []
-    
+
     if mono_or_homomer:
         n_homomers = int(list(chain_units)[0][1])
         for homomer in range(n_homomers):
@@ -75,13 +79,13 @@ def parse_casp_target(email_body):
         for i, (chain, units) in enumerate(chain_units):
             this_chain_header = heteromer[i][0]
             this_chain_sequence = heteromer[i][1]
-            
+
             for homo_repeat in range(int(units)):
                 fasta.append(f"{this_chain_header}_{homo_repeat}")
                 fasta.append(this_chain_sequence)
     else:
         print("Wrong query format")
-    print(fasta)    
+    print(fasta)
     if fasta:
         try:
             os.makedirs(f"results/targets/{target_name}", exist_ok=True)
@@ -93,7 +97,7 @@ def parse_casp_target(email_body):
             with open(fasta_out, "w") as out:
                 for line in fasta:
                     out.write(f"{line}\n")
-                    
+
             with open(f"results/targets/{target_name}/mail_results_to", "w") as out:
                 out.write(f"{reply_email}\n")
 
@@ -109,12 +113,13 @@ def check_email_for_new_targets():
     whitelist = [address.strip() for address in open(whitelist_file, "r").readlines()]
     emails = get_messages()
     email_regex = r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b"
-    
+
     for (sender, subject, body) in emails:
         if re.findall(email_regex, sender)[0] in whitelist:
             if type(body) is list:
                 body = body[0]
             if is_casp_target(str(body)):
+                print(body)
                 target_name = parse_casp_target(str(body))
                 new_targets.append(target_name)
             elif ">" in str(body): # this is some other kind of target
@@ -151,13 +156,13 @@ def send_email(mail_from, mail_to, mail_subject, mail_body):
         print(e)
         return False
 
-def send_ack(to_file, target_name):
+def send_ack(to, target_name):
     mail_from = config["server_address"]
     server_name = config["server_name"]
     
     mail_subject = f"{target_name} - query received by {server_name}"
     mail_body = ""
-    mail_to = [address.strip() for address in open(to_file).readlines()]
+    mail_to = [to] if "@" in to else [address.strip() for address in open(to).readlines()]
 
     success = send_email(mail_from, mail_to, mail_subject, mail_body)
     return success
@@ -165,8 +170,8 @@ def send_ack(to_file, target_name):
 def send_models(to_file, target_name, models):
     mail_from = config["server_address"]
     server_name = config["server_name"]
-    
-    mail_subject = f"{target_name}"
+
+    mail_subject = f"{target_name} - {config['CASP_groupname']}"
     mail_body = open(models).read()
     mail_to = [address.strip() for address in open(to_file).readlines()]
 
@@ -230,7 +235,7 @@ def emails(wildcards):
     return expand("results/targets/{target}/{target}.fasta", target=check_email_for_new_targets())
 
 def af_targets(wildcards):
-    return expand("results/targets/{target}/.email_sent", target=check_fs_for_new_targets())
-    
+    return expand("results/targets/{target}/.models_sent", target=check_fs_for_new_targets())
+
 def uploads(wildcards):
     return expand("results/targets/{target}/.data_uploaded", target=check_fs_for_data())

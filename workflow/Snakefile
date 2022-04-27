@@ -27,9 +27,7 @@ rule run_alphafold:
         fasta="results/targets/{target}/{target}.fasta",
         ack="results/targets/{target}/.ack_sent",
     output:
-        model_dir=directory("results/AF_models/{target}"),
         models="results/AF_models/{target}/ranked_4.pdb",
-        features="results/AF_models/{target}/features.pkl"
     params:
         alphafold=expand("{install_dir}/run_alphafold.py", install_dir={config["AF_install_dir"]}),
         flagfile=lambda wildcards: config["monomer_flagfile"] if is_monomer(f"results/targets/{wildcards.target}/{wildcards.target}.fasta") else config["multimer_flagfile"]
@@ -53,9 +51,11 @@ rule run_alphafold:
 rule send_acknowledgement:
     input:
         fasta="results/targets/{target}/{target}.fasta",
-        email_file="results/targets/{target}/mail_results_to",
+        email=config["CASP_sender"], # TODO handle cases where submitter is not CASP
     output:
         ack="results/targets/{target}/.ack_sent"
+    message:
+        "SENDING ACKNOWLEDGEMENT TO {input.email}"
     run:
         success = send_ack(input.email_file, wildcards.target)
         if success:
@@ -63,18 +63,19 @@ rule send_acknowledgement:
 
 rule add_headers:
     input:
-        model_dir="results/AF_models/{target}/",
+        fasta="results/targets/{target}/{target}.fasta",
         models="results/AF_models/{target}/ranked_4.pdb",
     output:
         models="results/AF_models/{target}/ranked_4.header.pdb",
     params:
-        groupid=config["CASP_groupn"]
+        groupid=config["CASP_groupn"] if is_monomer("results/targets/{target}/{target}.fasta") else config["CASP_groupn_multi"],
+        model_dir="results/AF_models/{target}/",
     shell:
         """
         i=1
-        for model in {input.model_dir}/ranked_[0-4].pdb; do
+        for model in {params.model_dir}/ranked_[0-4].pdb; do
             basename=$(basename $model .pdb)
-            cat > {input.model_dir}/$basename.header.pdb <<- xx
+            cat > {params.model_dir}/$basename.header.pdb <<- xx
 PFRMAT TS
 TARGET {wildcards.target}
 AUTHOR {params.groupid}
@@ -83,33 +84,44 @@ METHOD Databases as downloaded by AF2 scripts
 MODEL  $i
 PARENT N/A
 xx
-            
-            cat $model >> {input.model_dir}/$basename.header.pdb
-            sed -z 's/TER[ A-Z0-9]*\\nATOM/TER\\nPARENT N\/A\\nATOM/g' {input.model_dir}/$basename.header.pdb > {input.model_dir}/$basename.header.ter.pdb
-            mv {input.model_dir}/$basename.header.ter.pdb {input.model_dir}/$basename.header.pdb
+            # need to remove excess columns so that email submissions doesn't get line-wrapped
+            cat $model | cut -c -65 >> {params.model_dir}/$basename.header.pdb
+            sed -i 's/TER[ A-Z0-9]*/TER/g' {params.model_dir}/$basename.header.pdb
+            # need to add PARENT tag between inter-chain TER and next ATOM
+            sed -z 's/TER\\nATOM/TER\\nPARENT N\/A\\nATOM/g' {params.model_dir}/$basename.header.pdb > {params.model_dir}/$basename.header.ter.pdb
+            mv {params.model_dir}/$basename.header.ter.pdb {params.model_dir}/$basename.header.pdb
             i=$((i+1))
         done
         """
 
 rule cat_models:
     input:
-        model_dir="results/AF_models/{target}/",
         models="results/AF_models/{target}/ranked_4.header.pdb",
     output:
-        models="results/AF_models/{target}/models_to_submit",
+        models="results/targets/{target}/models_to_submit",
     shell:
-        "cat {input.model_dir}/ranked_*.header.pdb > {output.models}"
+        """
+        for file in $(dirname {input.models})/ranked_*.header.pdb; do
+            cat $file >> {output.models}
+            echo >> {output.models}
+        done
+        """
 
 rule send_results:
     input:
         email_file="results/targets/{target}/mail_results_to",
-        models="results/AF_models/{target}/models_to_submit",
+        models="results/AF_models/{target}/ranked_4.header.pdb"
     output:
-        email_sent="results/targets/{target}/.email_sent"
+        models_sent="results/targets/{target}/.models_sent"
+    message:
+        "SENDING MODELS"
     run:
-        success = send_models(input.email_file, wildcards.target, input.models)
+        success = True
+        for model in glob.glob(f"results/AF_models/{wildcards.target}/ranked_*.header.pdb"):
+            success = success and send_models(input.email_file, wildcards.target, model)
+            print(model)
         if success:
-            Path(output.email_sent).touch()
+            Path(output.models_sent).touch()
 
 rule upload_data:
     input:
