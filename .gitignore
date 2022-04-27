@@ -3,5 +3,4 @@ resources/**
 logs/**
 .snakemake
 .snakemake/**
-config/client*
-config/token.pickle
+run*.sh
