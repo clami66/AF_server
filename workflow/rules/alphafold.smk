@@ -41,8 +41,8 @@ rule run_alphafold:
         "export TF_FORCE_UNIFIED_MEMORY=1;"
         "export XLA_PYTHON_CLIENT_MEM_FRACTION={resources.gpus};"
         "python {params.alphafold} --flagfile {params.flagfile} --output_dir results/AF_models --fasta_paths {input.fasta} &> {log}"
-    
-    
+
+
 rule add_headers:
     input:
         fasta="results/targets/{target}/{target}.fasta",

@@ -198,7 +198,9 @@ def send_models(to_file, target_name, models, group_name):
 
 def check_fs_for_new_targets():
     fastas = glob.glob("results/targets/*/*.fasta")
-    targets_with_fastas = [Path(fasta_path).parts[2] for fasta_path in fastas] # [os.path.basename(fasta).rstrip(".fasta") for fasta in fastas]
+    targets_with_fastas = [
+        Path(fasta_path).parts[2] for fasta_path in fastas
+    ]  # [os.path.basename(fasta).rstrip(".fasta") for fasta in fastas]
     # if a "msas" folder is in the target's results path it's likely being run on slurm, so we skip it
     msas = glob.glob("results/AF_models/*/msas")
     targets_with_msas = [Path(msa_path).parts[2] for msa_path in msas]

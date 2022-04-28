@@ -3,7 +3,7 @@
 include: "rules/common.smk"
 
 
-#rule all:
+# rule all:
 #    input:
 #        unpack(fasta_inputs),
 #        unpack(af_targets),
@@ -35,6 +35,7 @@ rule upload_msas:
 rule upload_models:
     input:
         unpack(model_uploads),
+
 
 ##############################
 ## Included rules
