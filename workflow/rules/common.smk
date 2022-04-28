@@ -67,7 +67,7 @@ def is_casp_target(email_body):
     return IS_CASP
 
 
-def parse_casp_target(email_body):
+def parse_casp_target(sender, email_body):
     target_name = re.findall("TARGET=([a-zA-Z0-9]+)", email_body)[0]
     reply_email = re.findall("REPLY[\-EMAIL]*=([a-zA-Z0-9@.]+)", email_body)[0]
 
@@ -84,7 +84,7 @@ def parse_casp_target(email_body):
 
     mono_or_homomer = re.findall("SEQUENCE=([A-Z]+)", email_body)
     fasta = []
-    print(email_body, heteromer)
+
     if mono_or_homomer:
         n_homomers = int(list(chain_units)[0][1])
         for homomer in range(n_homomers):
@@ -113,9 +113,12 @@ def parse_casp_target(email_body):
             with open(fasta_out, "w") as out:
                 for line in fasta:
                     out.write(f"{line}\n")
-
+            # results are sent to address specified in email body, not to sender
             with open(f"results/targets/{target_name}/mail_results_to", "w") as out:
                 out.write(f"{reply_email}\n")
+            # acknowledgement is always sent back to sender
+            with open(f"results/targets/{target_name}/sender_address", "w") as out:
+                out.write(f"{sender}\n")
 
     return target_name
 
@@ -133,7 +136,8 @@ def check_email_for_new_targets():
             if type(body) is list:
                 body = body[0]
             if is_casp_target(str(body)):
-                target_name = parse_casp_target(str(body))
+                sender_email = re.findall(email_regex, sender)[0]
+                target_name = parse_casp_target(sender_email, str(body))
                 new_targets.append(target_name)
             else:  # email from sender in whitelist but not a target?
                 pass
@@ -194,12 +198,25 @@ def send_models(to_file, target_name, models, group_name):
 
 def check_fs_for_new_targets():
     fastas = glob.glob("results/targets/*/*.fasta")
-    return [os.path.basename(fasta).rstrip(".fasta") for fasta in fastas]
+    targets_with_fastas = [Path(fasta_path).parts[2] for fasta_path in fastas] # [os.path.basename(fasta).rstrip(".fasta") for fasta in fastas]
+    # if a "msas" folder is in the target's results path it's likely being run on slurm, so we skip it
+    msas = glob.glob("results/AF_models/*/msas")
+    targets_with_msas = [Path(msa_path).parts[2] for msa_path in msas]
+    return [target for target in targets_with_fastas if not target in targets_with_msas]
 
 
 def check_fs_for_data():
+    return check_fs_for_models()
+
+
+def check_fs_for_models():
     ended_runs = glob.glob("results/AF_models/*/ranked_4.pdb")
     return [os.path.basename(os.path.dirname(run)) for run in ended_runs]
+
+
+def check_fs_for_msas():
+    ended_msas = glob.glob("results/AF_models/*/features.pkl")
+    return [os.path.basename(os.path.dirname(msa)) for msa in ended_msas]
 
 
 def is_monomer(fasta_path):
@@ -222,13 +239,13 @@ def get_n_gpus(fasta_file):
                 fasta_sequence += line
     fasta_length = len(fasta_sequence)
 
-    if fasta_length < 400:
+    if fasta_length < 800:
         pass
-    elif fasta_length < 1000:
+    elif fasta_length < 1600:
         n_gpus = 2
     elif fasta_length < 2000:
         n_gpus = 3
-    elif fasta_length < 4000:
+    elif fasta_length < 3000:
         n_gpus = 4
     else:
         n_gpus = 8
@@ -250,7 +267,15 @@ def read_json(json_path):
 ##############################
 # Input collection function
 ##############################
-def emails(wildcards):
+def all_input(wildcards):
+    d = {
+        "fasta": fasta_inputs(wildcards),
+        "af": af_targets(wildcards),
+    }
+    return d
+
+
+def fasta_inputs(wildcards):
     return expand(
         "results/targets/{target}/{target}.fasta", target=check_email_for_new_targets()
     )
@@ -264,3 +289,13 @@ def af_targets(wildcards):
 
 def uploads(wildcards):
     return expand("results/targets/{target}/.data_uploaded", target=check_fs_for_data())
+
+
+def msa_uploads(wildcards):
+    return expand("results/targets/{target}/.msas_uploaded", target=check_fs_for_msas())
+
+
+def model_uploads(wildcards):
+    return expand(
+        "results/targets/{target}/.models_uploaded", target=check_fs_for_models()
+    )

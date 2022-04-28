@@ -3,25 +3,18 @@
 include: "rules/common.smk"
 
 
-# Only alphafold itself should run on a node with slurm
-localrules:
-    check_mail,
-    send_acknowledgement,
-    add_headers,
-    cat_models,
-    send_results,
-    upload_data,
-
-
+#rule all:
+#    input:
+#        unpack(fasta_inputs),
+#        unpack(af_targets),
 rule all:
     input:
-        unpack(emails),
-        unpack(af_targets),
+        unpack(all_input),
 
 
 checkpoint check_mail:
     input:
-        unpack(emails),
+        unpack(fasta_inputs),
 
 
 rule run_all_af:
@@ -34,164 +27,18 @@ rule upload_all:
         unpack(uploads),
 
 
-rule run_alphafold:
+rule upload_msas:
     input:
-        fasta="results/targets/{target}/{target}.fasta",
-        ack="results/targets/{target}/.ack_sent",
-    output:
-        models="results/AF_models/{target}/ranked_4.pdb",
-    params:
-        alphafold=expand(
-            "{install_dir}/run_alphafold.py", install_dir={config["AF_install_dir"]}
-        ),
-        flagfile=(
-            lambda wildcards: config["monomer_flagfile"]
-            if is_monomer(
-                f"results/targets/{wildcards.target}/{wildcards.target}.fasta"
-            )
-            else config["multimer_flagfile"]
-        ),
-    resources:
-        ntasks=lambda wildcards: get_n_cores(
-            f"results/targets/{wildcards.target}/{wildcards.target}.fasta"
-        ),
-        mem_mb=120000,
-        gpus=lambda wildcards: get_n_gpus(
-            f"results/targets/{wildcards.target}/{wildcards.target}.fasta"
-        ),
-        time=4320,
-    conda:
-        "envs/environment.yaml"
-    message:
-        "RUNNING ALPHAFOLD ON {resources.ntasks} CORES, {resources.gpus} GPUs"
-    log:
-        "logs/alphafold_run/{target}.log",
-    benchmark:
-        "benchmarks/alphafold_run/{target}.tsv"
-    shell:
-        "export TF_FORCE_UNIFIED_MEMORY=1;"
-        "export XLA_PYTHON_CLIENT_MEM_FRACTION={resources.gpus};"
-        "python {params.alphafold} --flagfile {params.flagfile} --output_dir results/AF_models --fasta_paths {input.fasta} &> {log}"
+        unpack(msa_uploads),
 
 
-rule send_acknowledgement:
+rule upload_models:
     input:
-        fasta="results/targets/{target}/{target}.fasta",
-    output:
-        ack="results/targets/{target}/.ack_sent",
-    params:
-        email=config["CASP_sender"],
-        group_name=(
-            lambda wildcards: config["CASP_groupname"]
-            if is_monomer(
-                f"results/targets/{wildcards.target}/{wildcards.target}.fasta"
-            )
-            else config["CASP_groupname_multi"]
-        ),
-    message:
-        "SENDING ACKNOWLEDGEMENT TO {params.email}"
-    run:
-        success = send_ack(params.email, wildcards.target, params.group_name)
-        if success:
-            Path(output.ack).touch()
+        unpack(model_uploads),
 
-
-rule add_headers:
-    input:
-        fasta="results/targets/{target}/{target}.fasta",
-        models="results/AF_models/{target}/ranked_4.pdb",
-    output:
-        models="results/AF_models/{target}/ranked_4.header.pdb",
-    params:
-        groupid=(
-            lambda wildcards: config["CASP_groupn"]
-            if is_monomer(
-                f"results/targets/{wildcards.target}/{wildcards.target}.fasta"
-            )
-            else config["CASP_groupn_multi"]
-        ),
-        model_dir="results/AF_models/{target}/",
-    shell:
-        """
-                i=1
-                for model in {params.model_dir}/ranked_[0-4].pdb; do
-                    basename=$(basename $model .pdb)
-                    cat > {params.model_dir}/$basename.header.pdb <<- xx
-PFRMAT TS
-TARGET {wildcards.target}
-AUTHOR {params.groupid}
-METHOD Vanilla AlphaFold v2.2
-METHOD Databases as downloaded by AF2 scripts
-MODEL  $i
-PARENT N/A
-xx
-                    # need to remove excess columns so that email submissions doesn't get line-wrapped
-                    cat $model | cut -c -65 >> {params.model_dir}/$basename.header.pdb
-                    sed -i 's/TER[ A-Z0-9]*/TER/g' {params.model_dir}/$basename.header.pdb
-                    # need to add PARENT tag between inter-chain TER and next ATOM
-                    sed -z 's/TER\\nATOM/TER\\nPARENT N\/A\\nATOM/g' {params.model_dir}/$basename.header.pdb > {params.model_dir}/$basename.header.ter.pdb
-                    mv {params.model_dir}/$basename.header.ter.pdb {params.model_dir}/$basename.header.pdb
-                    i=$((i+1))
-                done
-        """
-
-
-rule cat_models:
-    input:
-        models="results/AF_models/{target}/ranked_4.header.pdb",
-    output:
-        models="results/targets/{target}/concatenated_models",
-    shell:
-        """
-        for file in $(dirname {input.models})/ranked_*.header.pdb; do
-            cat $file >> {output.models}
-            echo >> {output.models}
-        done
-        """
-
-
-rule send_results:
-    input:
-        email_file="results/targets/{target}/mail_results_to",
-        models="results/AF_models/{target}/ranked_4.header.pdb",
-    output:
-        models_sent="results/targets/{target}/.models_sent",
-    params:
-        group_name=(
-            lambda wildcards: config["CASP_groupname"]
-            if is_monomer(
-                f"results/targets/{wildcards.target}/{wildcards.target}.fasta"
-            )
-            else config["CASP_groupname_multi"]
-        ),
-    message:
-        "SENDING MODELS"
-    run:
-        success = True
-        for model in glob.glob(
-            f"results/AF_models/{wildcards.target}/ranked_*.header.pdb"
-        ):
-            success = success and send_models(
-                input.email_file, wildcards.target, model, params.group_name
-            )
-        if success:
-            Path(output.models_sent).touch()
-
-
-rule upload_data:
-    input:
-        models="results/AF_models/{target}/ranked_4.pdb",
-    output:
-        data_uploaded="results/targets/{target}/.data_uploaded",
-    params:
-        data_dir="results/AF_models/{target}",
-        server_user=config["data_server_user"],
-        server_address=config["data_server_address"],
-        server_folder=config["data_server_folder"],
-    log:
-        "logs/rsync/{target}.log",
-    shell:
-        "cd {params.data_dir}/msas; tar -zcvf ../msas.tar.gz *; cd -;"
-        "cd {params.data_dir}; tar -zcvf models.tar.gz $(ls ranked_*.pdb | grep -v header); cd -;"
-        "rsync -av {params.data_dir}/msas.tar.gz {params.data_dir}/models.tar.gz {params.server_user}@{params.server_address}:{params.server_folder}/{wildcards.target}/ &> {log};"
-        "touch results/targets/{wildcards.target}/.data_uploaded;"
+##############################
+## Included rules
+##############################
+include: "rules/alphafold.smk"
+include: "rules/submit.smk"
+include: "rules/upload.smk"
