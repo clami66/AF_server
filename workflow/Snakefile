@@ -59,8 +59,9 @@ rule run_alphafold:
         gpus=lambda wildcards: get_n_gpus(
             f"results/targets/{wildcards.target}/{wildcards.target}.fasta"
         ),
+        time=4320,
     conda:
-        "../envs/environment.yaml"
+        "envs/environment.yaml"
     message:
         "RUNNING ALPHAFOLD ON {resources.ntasks} CORES, {resources.gpus} GPUs"
     log:
@@ -76,13 +77,21 @@ rule run_alphafold:
 rule send_acknowledgement:
     input:
         fasta="results/targets/{target}/{target}.fasta",
-        email=config["CASP_sender"],  # TODO handle cases where submitter is not CASP
     output:
         ack="results/targets/{target}/.ack_sent",
+    params:
+        email=config["CASP_sender"],
+        group_name=(
+            lambda wildcards: config["CASP_groupname"]
+            if is_monomer(
+                f"results/targets/{wildcards.target}/{wildcards.target}.fasta"
+            )
+            else config["CASP_groupname_multi"]
+        ),
     message:
-        "SENDING ACKNOWLEDGEMENT TO {input.email}"
+        "SENDING ACKNOWLEDGEMENT TO {params.email}"
     run:
-        success = send_ack(input.email_file, wildcards.target)
+        success = send_ack(params.email, wildcards.target, params.group_name)
         if success:
             Path(output.ack).touch()
 
@@ -131,7 +140,7 @@ rule cat_models:
     input:
         models="results/AF_models/{target}/ranked_4.header.pdb",
     output:
-        models="results/targets/{target}/models_to_submit",
+        models="results/targets/{target}/concatenated_models",
     shell:
         """
         for file in $(dirname {input.models})/ranked_*.header.pdb; do
@@ -165,7 +174,6 @@ rule send_results:
             success = success and send_models(
                 input.email_file, wildcards.target, model, params.group_name
             )
-            print(model)
         if success:
             Path(output.models_sent).touch()
 
@@ -183,7 +191,7 @@ rule upload_data:
     log:
         "logs/rsync/{target}.log",
     shell:
-        "tar -zcvf {params.data_dir}/msas.tar.gz {params.data_dir}/msas;"
-        "tar -zcvf {params.data_dir}/models.tar.gz {params.data_dir}/ranked_*.pdb;"
+        "cd {params.data_dir}/msas; tar -zcvf ../msas.tar.gz *; cd -;"
+        "cd {params.data_dir}; tar -zcvf models.tar.gz $(ls ranked_*.pdb | grep -v header); cd -;"
         "rsync -av {params.data_dir}/msas.tar.gz {params.data_dir}/models.tar.gz {params.server_user}@{params.server_address}:{params.server_folder}/{wildcards.target}/ &> {log};"
         "touch results/targets/{wildcards.target}/.data_uploaded;"

@@ -80,11 +80,11 @@ def parse_casp_target(email_body):
         stoichiometry[0::2], stoichiometry[1::2]
     )  # e.g. A3B1 -> [('A', '3'), ('B', '1')]
 
-    heteromer = re.findall(r"(>[ a-zA-Z0-9]+.* [|])[\s]+([A-Z]+)", email_body)
+    heteromer = re.findall(r"(>[ a-zA-Z0-9]+.*[|])[\s]+([A-Z]+)", email_body)
 
     mono_or_homomer = re.findall("SEQUENCE=([A-Z]+)", email_body)
     fasta = []
-
+    print(email_body, heteromer)
     if mono_or_homomer:
         n_homomers = int(list(chain_units)[0][1])
         for homomer in range(n_homomers):
@@ -100,7 +100,6 @@ def parse_casp_target(email_body):
                 fasta.append(this_chain_sequence)
     else:
         print("Wrong query format")
-    print(fasta)
     if fasta:
         try:
             os.makedirs(f"results/targets/{target_name}", exist_ok=True)
@@ -121,10 +120,6 @@ def parse_casp_target(email_body):
     return target_name
 
 
-def parse_target(email_body):
-    return "foo"  # TODO implement this
-
-
 def check_email_for_new_targets():
 
     new_targets = []
@@ -138,11 +133,7 @@ def check_email_for_new_targets():
             if type(body) is list:
                 body = body[0]
             if is_casp_target(str(body)):
-                print(body)
                 target_name = parse_casp_target(str(body))
-                new_targets.append(target_name)
-            elif ">" in str(body):  # this is some other kind of target
-                target_name = parse_target(str(body))
                 new_targets.append(target_name)
             else:  # email from sender in whitelist but not a target?
                 pass
@@ -177,23 +168,21 @@ def send_email(mail_from, mail_to, mail_subject, mail_body):
         return False
 
 
-def send_ack(to, target_name):
+def send_ack(to, target_name, group_name):
     mail_from = config["server_address"]
-    server_name = config["server_name"]
 
-    mail_subject = f"{target_name} - query received by {server_name}"
+    mail_subject = f"{target_name} - query received by {group_name}"
     mail_body = ""
     mail_to = (
         [to] if "@" in to else [address.strip() for address in open(to).readlines()]
     )
-
+    print(mail_to)
     success = send_email(mail_from, mail_to, mail_subject, mail_body)
     return success
 
 
 def send_models(to_file, target_name, models, group_name):
     mail_from = config["server_address"]
-    server_name = config["server_name"]
 
     mail_subject = f"{target_name} - {group_name}"
     mail_body = open(models).read()
