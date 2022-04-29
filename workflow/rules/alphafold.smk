@@ -8,6 +8,7 @@ rule run_alphafold:
         ack="results/targets/{target}/.ack_sent",
     output:
         models="results/AF_models/{target}/ranked_4.pdb",
+        ranking="results/AF_models/{target}/ranking_debug.json"
     params:
         alphafold=expand(
             "{install_dir}/run_alphafold.py", install_dir={config["AF_install_dir"]}
@@ -23,14 +24,14 @@ rule run_alphafold:
         ntasks=lambda wildcards: get_n_cores(
             f"results/targets/{wildcards.target}/{wildcards.target}.fasta"
         ),
-        mem_mb=120000,
-        gpus=lambda wildcards: get_n_gpus(
-            f"results/targets/{wildcards.target}/{wildcards.target}.fasta"
+        mem_mb=config["mem_mb"],
+        gpus=lambda wildcards: min(
+            get_n_gpus(f"results/targets/{wildcards.target}/{wildcards.target}.fasta"),
+            config["max_gpus"],
         ),
-        time=4320,
-        mail_user=config["server_address"],
+        time=config["walltime"],
     conda:
-        "envs/environment.yaml"
+        "../envs/environment.yaml"
     message:
         "RUNNING ALPHAFOLD ON {resources.ntasks} CORES, {resources.gpus} GPUs"
     log:
@@ -40,7 +41,9 @@ rule run_alphafold:
     shell:
         "export TF_FORCE_UNIFIED_MEMORY=1;"
         "export XLA_PYTHON_CLIENT_MEM_FRACTION={resources.gpus};"
-        "python {params.alphafold} --flagfile {params.flagfile} --output_dir results/AF_models --fasta_paths {input.fasta} &> {log}"
+        "touch results/AF_models/{wildcards.target}/.slurm_running;"
+        "python {params.alphafold} --flagfile {params.flagfile} --output_dir results/AF_models --fasta_paths {input.fasta} &> {log};"
+        "rm results/AF_models/{wildcards.target}/.slurm_running;"
 
 
 rule add_headers:
@@ -60,24 +63,24 @@ rule add_headers:
         model_dir="results/AF_models/{target}/",
     shell:
         """
-                        i=1
-                        for model in {params.model_dir}/ranked_[0-4].pdb; do
-                            basename=$(basename $model .pdb)
-                            cat > {params.model_dir}/$basename.header.pdb <<- xx
-        PFRMAT TS
-        TARGET {wildcards.target}
-        AUTHOR {params.groupid}
-        METHOD Vanilla AlphaFold v2.2
-        METHOD Databases as downloaded by AF2 scripts
-        MODEL  $i
-        PARENT N/A
-        xx
-                            # need to remove excess columns so that email submissions doesn't get line-wrapped
-                            cat $model | cut -c -65 >> {params.model_dir}/$basename.header.pdb
-                            sed -i 's/TER[ A-Z0-9]*/TER/g' {params.model_dir}/$basename.header.pdb
-                            # need to add PARENT tag between inter-chain TER and next ATOM
-                            sed -z 's/TER\\nATOM/TER\\nPARENT N\/A\\nATOM/g' {params.model_dir}/$basename.header.pdb > {params.model_dir}/$basename.header.ter.pdb
-                            mv {params.model_dir}/$basename.header.ter.pdb {params.model_dir}/$basename.header.pdb
-                            i=$((i+1))
-                        done
+                                i=1
+                                for model in {params.model_dir}/ranked_[0-4].pdb; do
+                                    basename=$(basename $model .pdb)
+                                    cat > {params.model_dir}/$basename.header.pdb <<- xx
+PFRMAT TS
+TARGET {wildcards.target}
+AUTHOR {params.groupid}
+METHOD Vanilla AlphaFold v2.2
+METHOD Databases as downloaded by AF2 scripts
+MODEL  $i
+PARENT N/A
+xx
+                                    # need to remove excess columns so that email submissions doesn't get line-wrapped
+                                    cat $model | cut -c -65 >> {params.model_dir}/$basename.header.pdb
+                                    sed -i 's/TER[ A-Z0-9]*/TER/g' {params.model_dir}/$basename.header.pdb
+                                    # need to add PARENT tag between inter-chain TER and next ATOM
+                                    sed -z 's/TER\\nATOM/TER\\nPARENT N\/A\\nATOM/g' {params.model_dir}/$basename.header.pdb > {params.model_dir}/$basename.header.ter.pdb
+                                    mv {params.model_dir}/$basename.header.ter.pdb {params.model_dir}/$basename.header.pdb
+                                    i=$((i+1))
+                                done
         """

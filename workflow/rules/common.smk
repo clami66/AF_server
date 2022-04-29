@@ -202,9 +202,11 @@ def check_fs_for_new_targets():
         Path(fasta_path).parts[2] for fasta_path in fastas
     ]  # [os.path.basename(fasta).rstrip(".fasta") for fasta in fastas]
     # if a "msas" folder is in the target's results path it's likely being run on slurm, so we skip it
-    msas = glob.glob("results/AF_models/*/msas")
-    targets_with_msas = [Path(msa_path).parts[2] for msa_path in msas]
-    return [target for target in targets_with_fastas if not target in targets_with_msas]
+    slurm_running = glob.glob("results/AF_models/*/.slurm_running")
+    targets_with_slurm = [Path(path).parts[2] for path in slurm_running]
+    return [
+        target for target in targets_with_fastas if not target in targets_with_slurm
+    ]
 
 
 def check_fs_for_data():
@@ -256,15 +258,29 @@ def get_n_gpus(fasta_file):
 
 
 def get_n_cores(fasta_file):
-    return get_n_gpus(fasta_file) * 16
+    return get_n_gpus(fasta_file) * config["n_cores_per_gpu"]
 
 
-def read_json(json_path):
+def get_model_order(json_path):
     js = json.loads(open(json_path).read())
     model_order = js["order"]
 
     return model_order
 
+
+def reduce_pkl(pkl_path, ranking, keys=("predicted_aligned_error", "plddt", "ptm", "iptm", "ranking_confidence")):
+    dirname = os.path.dirname(pkl_path)
+    results_reduced = {}
+    with open(pkl_path, "rb") as pkl:
+        results = pickle.load(pkl)
+        for key in keys:
+            if key in results:
+                results_reduced[key] = results[key]
+    with open(f"{dirname}/ranked_{ranking}.pkl", "wb") as out_pkl:
+        pickle.dump(results_reduced, out_pkl)
+    return
+    
+    
 
 ##############################
 # Input collection function

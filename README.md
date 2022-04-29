@@ -1,21 +1,30 @@
-# Snakemake workflow: `<name>`
+# Snakemake workflow: `AF_server`
 
 [![Snakemake](https://img.shields.io/badge/snakemake-≥6.3.0-brightgreen.svg)](https://snakemake.github.io)
 [![GitHub actions status](https://github.com/<owner>/<repo>/workflows/Tests/badge.svg?branch=main)](https://github.com/<owner>/<repo>/actions?query=branch%3Amain+workflow%3ATests)
 
 
-A Snakemake workflow for `<description>`
+A Snakemake workflow to serve AlphaFold queries through an email server
 
+
+## Setup
+
+1. Clone this repository
+2. Edit the configuration file `config/config.yaml`
+3. If on HPC, edit `config/envmodules.yaml` to load necessary modules through `module load`
+4. Submitting queries must be explicitly allowed by editing the whitelist `config/whitelist` and adding allowed source email addresses
+5. SLURM configuration is handled by the `slurm/` snakemake profile
 
 ## Usage
 
-The usage of this workflow is described in the [Snakemake Workflow Catalog](https://snakemake.github.io/snakemake-workflow-catalog/?usage=<owner>%2F<repo>).
+To invoke the pipeline, run:
 
-If you use this workflow in a paper, don't forget to give credits to the authors by citing the URL of this (original) <repo>sitory and its DOI (see above).
+```
+# password to the inbox/outbox
+export EMAIL_PASS=...
+snakemake -j 8 --rerun-incomplete --cores 16 --profile slurm --use-conda --use-envmodules
+```
 
-# TODO
+The password to the email account used to serve the queries must be passed through the environmental variable `EMAIL_PASS`
 
-* Replace `<owner>` and `<repo>` everywhere in the template (also under .github/workflows) with the correct `<repo>` name and owning user or organization.
-* Replace `<name>` with the workflow name (can be the same as `<repo>`).
-* Replace `<description>` with a description of what the workflow does.
-* The workflow will occur in the snakemake-workflow-catalog once it has been made public. Then the link under "Usage" will point to the usage instructions if `<owner>` and `<repo>` were correctly set.
+The `--use-conda` flag allows to setup the environment for AlphaFold (tested on v2.2) defined at `workflow/envs/environment.yaml` the argument `
