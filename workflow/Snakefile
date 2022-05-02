@@ -2,11 +2,6 @@
 ## functions and common configuration for the workflow
 include: "rules/common.smk"
 
-
-# rule all:
-#    input:
-#        unpack(fasta_inputs),
-#        unpack(af_targets),
 rule all:
     input:
         unpack(all_input),

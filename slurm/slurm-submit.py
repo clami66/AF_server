@@ -19,6 +19,7 @@ RESOURCE_MAPPING = {
     "mem-per-cpu": ("mem-per-cpu", "mem_per_cpu", "mem_per_thread"),
     "nodes": ("nodes", "nnodes"),
     "partition": ("partition", "queue"),
+    "gpus": ("gpus", "gpu"),
 }
 
 # parse job

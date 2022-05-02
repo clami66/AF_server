@@ -70,7 +70,7 @@ def is_casp_target(email_body):
 def parse_casp_target(sender, email_body):
     target_name = re.findall("TARGET=([a-zA-Z0-9]+)", email_body)[0]
     reply_email = re.findall("REPLY[\-EMAIL]*=([a-zA-Z0-9@.]+)", email_body)[0]
-
+    print(email_body)
     stoichiometry = (
         re.findall("STOICHIOMETRY=([a-zA-Z0-9]+)", email_body)[0]
         if "STOICHIOMETRY" in email_body
@@ -79,7 +79,6 @@ def parse_casp_target(sender, email_body):
     chain_units = zip(
         stoichiometry[0::2], stoichiometry[1::2]
     )  # e.g. A3B1 -> [('A', '3'), ('B', '1')]
-
     heteromer = re.findall(r"(>[ a-zA-Z0-9]+.*[|])[\s]+([A-Z]+)", email_body)
 
     mono_or_homomer = re.findall("SEQUENCE=([A-Z]+)", email_body)
@@ -180,7 +179,6 @@ def send_ack(to, target_name, group_name):
     mail_to = (
         [to] if "@" in to else [address.strip() for address in open(to).readlines()]
     )
-    print(mail_to)
     success = send_email(mail_from, mail_to, mail_subject, mail_body)
     return success
 
@@ -279,8 +277,7 @@ def reduce_pkl(pkl_path, ranking, keys=("predicted_aligned_error", "plddt", "ptm
     with open(f"{dirname}/ranked_{ranking}.pkl", "wb") as out_pkl:
         pickle.dump(results_reduced, out_pkl)
     return
-    
-    
+
 
 ##############################
 # Input collection function
