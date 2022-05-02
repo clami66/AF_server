@@ -9,7 +9,7 @@ PFRMAT TS
 TARGET $target
 AUTHOR $groupid
 METHOD Vanilla AlphaFold v2.2
-METHOD Databases as downloaded by AF2 scripts (22/04/2022)
+METHOD For details see: bioinfo.ifm.liu.se/casp15/reproduce
 MODEL  $i
 PARENT N/A
 xx

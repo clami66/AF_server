@@ -66,7 +66,7 @@ rule add_headers:
             else config["CASP_groupn_multi"]
         ),
         model_dir="results/AF_models/{target}/",
-        header_script="../scripts/cat_header.sh"
+        header_script="workflow/scripts/cat_header.sh"
     shell:
         """
         i=1
