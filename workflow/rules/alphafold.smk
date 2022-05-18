@@ -31,10 +31,10 @@ rule run_alphafold:
         ),
         mem_mb=lambda wildcards: config["mem_mb"] * min(
 	    get_n_gpus(f"results/targets/{wildcards.target}/{wildcards.target}.fasta"),
-            config["max_gpus"],
+            config["gpus_per_node"],
         ),
         time=config["walltime"],
-        nodes=1,
+        nodes=lambda wildcards: get_n_gpus(f"results/targets/{wildcards.target}/{wildcards.target}.fasta") // config["gpus_per_node"],
     conda:
         "../envs/environment.yaml"
     message:
