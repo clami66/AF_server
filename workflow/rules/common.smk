@@ -70,15 +70,20 @@ def is_casp_target(email_body):
 def parse_casp_target(sender, email_body):
     target_name = re.findall("TARGET=([a-zA-Z0-9]+)", email_body)[0]
     reply_email = re.findall("REPLY[\-EMAIL]*=([a-zA-Z0-9@.]+)", email_body)[0]
-    print(email_body)
-    stoichiometry = (
-        re.findall("STOICHIOMETRY=([a-zA-Z0-9]+)", email_body)[0]
-        if "STOICHIOMETRY" in email_body
-        else "A1"
-    )
-    chain_units = zip(
-        stoichiometry[0::2], stoichiometry[1::2]
-    )  # e.g. A3B1 -> [('A', '3'), ('B', '1')]
+
+    stoichiometry = "A1" # A1 is the default in case the field is not in the email
+    re_sto = re.findall("STOICHIOMETRY=([a-zA-Z0-9]+)", email_body)
+    if re_sto:
+        stoichiometry = re_sto[0]
+    #stoichiometry = (
+    #    re.findall("STOICHIOMETRY=([a-zA-Z0-9]+)", email_body)[0]
+    #    if "STOICHIOMETRY" in email_body
+    #    else "A1"
+    #)
+    #chain_units = zip(
+    #    stoichiometry[0::2], stoichiometry[1::2]
+    #)  # e.g. A3B1 -> [('A', '3'), ('B', '1')]
+    chain_units = re.findall("([A-Z]+)([0-9]+)", stoichiometry)  # e.g. A16B8 -> [('A', '16'), ('B', '8')]
     heteromer = re.findall(r"(>[ a-zA-Z0-9]+.*[|])[\s]+([A-Z]+)", email_body)
 
     mono_or_homomer = re.findall("SEQUENCE=([A-Z]+)", email_body)
@@ -249,8 +254,10 @@ def get_n_gpus(fasta_file):
         n_gpus = 3
     elif fasta_length < 3000:
         n_gpus = 4
-    else:
+    elif fasta_length < 4500:
         n_gpus = 8
+    else:
+        n_gpus = 16
 
     return n_gpus
 
