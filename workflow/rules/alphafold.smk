@@ -34,7 +34,7 @@ rule run_alphafold:
             config["gpus_per_node"],
         ),
         time=config["walltime"],
-        nodes=lambda wildcards: get_n_gpus(f"results/targets/{wildcards.target}/{wildcards.target}.fasta") // config["gpus_per_node"],
+        nodes=lambda wildcards: math.ceil(get_n_gpus(f"results/targets/{wildcards.target}/{wildcards.target}.fasta") / config["gpus_per_node"]),
     conda:
         "../envs/environment.yaml"
     message:
