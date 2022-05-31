@@ -76,25 +76,20 @@ def parse_casp_target(sender, email_body):
     re_sto = re.findall("STOICHIOMETRY=([a-zA-Z0-9]+)", email_body)
     if re_sto:
         stoichiometry = re_sto[0]
-    #stoichiometry = (
-    #    re.findall("STOICHIOMETRY=([a-zA-Z0-9]+)", email_body)[0]
-    #    if "STOICHIOMETRY" in email_body
-    #    else "A1"
-    #)
-    #chain_units = zip(
-    #    stoichiometry[0::2], stoichiometry[1::2]
-    #)  # e.g. A3B1 -> [('A', '3'), ('B', '1')]
+
     chain_units = re.findall("([A-Z]+)([0-9]+)", stoichiometry)  # e.g. A16B8 -> [('A', '16'), ('B', '8')]
     heteromer = re.findall(r"(>[ a-zA-Z0-9]+.*[|])[\s]+([A-Z]+)", email_body)
 
-    mono_or_homomer = re.findall("SEQUENCE=([A-Z]+)", email_body)
+    #mono_or_homomer = re.findall("SEQUENCE=([A-Z]+)", email_body)
+    mono_or_homomer = re.findall("SEQUENCE=([A-Z\s]+)REPLY", email_body)
     fasta = []
 
     if mono_or_homomer:
         n_homomers = int(list(chain_units)[0][1])
         for homomer in range(n_homomers):
             fasta.append(f"> {target_name}_{homomer}")
-            fasta.append(mono_or_homomer[0])
+            fasta.append(re.sub("\s", "", mono_or_homomer[0]))
+            #fasta.append(mono_or_homomer[0])
     elif heteromer:
         for i, (chain, units) in enumerate(chain_units):
             this_chain_header = heteromer[i][0]
