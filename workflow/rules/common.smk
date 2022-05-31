@@ -114,12 +114,6 @@ def parse_casp_target(sender, email_body):
                 for line in fasta:
                     out.write(f"{line}\n")
 
-            # homodimers etc, need to write the monomer fasta target as well
-            if n_homomers > 1:
-                with open(fasta_out + "_A1", "w") as out:
-                    for line in fasta[:2]:
-                        out.write(f"{line}\n")
-
             # results are sent to address specified in email body, not to sender
             with open(f"results/targets/{target_name}/mail_results_to", "w") as out:
                 out.write(f"{reply_email}\n")
@@ -127,6 +121,27 @@ def parse_casp_target(sender, email_body):
             with open(f"results/targets/{target_name}/sender_address", "w") as out:
                 out.write(f"{sender}\n")
 
+        # homodimers etc, need to write the monomer fasta target as well
+        if n_homomers > 1:
+            fasta_out = f"results/targets/{target_name}_A1/{target_name}.fasta"
+            if not os.path.isfile(
+            fasta_out
+            ):
+                try:
+                    os.makedirs(f"results/targets/{target_name}_A1", exist_ok=True)
+                except Exception as a:
+                    print(a)                
+                fasta_out = f"results/targets/{target_name}_A1/{target_name}.fasta"
+                with open(fasta_out, "w") as out:
+                    for line in fasta[:2]:
+                        out.write(f"{line}\n")
+
+                with open(f"results/targets/{target_name}_A1/mail_results_to", "w") as out:
+                    out.write(f"{reply_email}\n")
+                with open(f"results/targets/{target_name}_A1/sender_address", "w") as out:
+                    out.write(f"{sender}\n")
+                return [target_name, target_name + "_A1"]
+                
     return target_name
 
 
@@ -145,7 +160,7 @@ def check_email_for_new_targets():
             if is_casp_target(str(body)):
                 sender_email = re.findall(email_regex, sender)[0]
                 target_name = parse_casp_target(sender_email, str(body))
-                new_targets.append(target_name)
+                new_targets.extend(target_name)
             else:  # email from sender in whitelist but not a target?
                 pass
 
