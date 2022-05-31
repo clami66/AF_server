@@ -72,7 +72,8 @@ rule add_headers:
         i=1
         for model in {params.model_dir}/ranked_[0-4].pdb; do
             basename=$(basename $model .pdb)
-            {params.header_script} {wildcards.target} {params.groupid} $i > {params.model_dir}/$basename.header.pdb
+            targetname=$(sed 's/_A1//' <<< {wildcards.target})
+            {params.header_script} targetname {params.groupid} $i > {params.model_dir}/$basename.header.pdb
             
             # cat PDB coordinates removing excess columns to avoid line wrapping in emails
             cat $model | cut -c -65 >> {params.model_dir}/$basename.header.pdb

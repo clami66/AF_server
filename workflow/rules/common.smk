@@ -83,7 +83,7 @@ def parse_casp_target(sender, email_body):
     #mono_or_homomer = re.findall("SEQUENCE=([A-Z]+)", email_body)
     mono_or_homomer = re.findall("SEQUENCE=([A-Z\s]+)REPLY", email_body)
     fasta = []
-
+    n_homomers = 1
     if mono_or_homomer:
         n_homomers = int(list(chain_units)[0][1])
         for homomer in range(n_homomers):
@@ -113,6 +113,13 @@ def parse_casp_target(sender, email_body):
             with open(fasta_out, "w") as out:
                 for line in fasta:
                     out.write(f"{line}\n")
+
+            # homodimers etc, need to write the monomer fasta target as well
+            if n_homomers > 1:
+                with open(fasta_out + "_A1", "w") as out:
+                    for line in fasta[:2]:
+                        out.write(f"{line}\n")
+
             # results are sent to address specified in email body, not to sender
             with open(f"results/targets/{target_name}/mail_results_to", "w") as out:
                 out.write(f"{reply_email}\n")
@@ -186,7 +193,7 @@ def send_ack(to, target_name, group_name):
 
 def send_models(to_file, target_name, models, group_name):
     mail_from = config["server_address"]
-
+    target_name = re.sub("_A1", "", target_name) # monomer version of homomer
     mail_subject = f"{target_name} - {group_name}"
     mail_body = open(models).read()
     mail_to = [address.strip() for address in open(to_file).readlines()]
