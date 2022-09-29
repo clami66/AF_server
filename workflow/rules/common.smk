@@ -73,7 +73,7 @@ def parse_casp_target(sender, email_body):
     reply_email = re.findall("REPLY[\-EMAIL]*=([a-zA-Z0-9@.]+)", email_body)[0]
 
     stoichiometry = "A1" # A1 is the default in case the field is not in the email
-    re_sto = re.findall("STOICHIOMETRY=([a-zA-Z0-9]+)", email_body)
+    re_sto = re.findall("STOICHIOMETRY=([a-zA-Z0-9:]+)", email_body)
     if re_sto:
         stoichiometry = re_sto[0]
 
@@ -101,6 +101,7 @@ def parse_casp_target(sender, email_body):
     else:
         print("Wrong query format")
     if fasta:
+        print(stoichiometry, heteromer)
         try:
             os.makedirs(f"results/targets/{target_name}", exist_ok=True)
         except Exception as a:
@@ -123,15 +124,15 @@ def parse_casp_target(sender, email_body):
 
         # homodimers etc, need to write the monomer fasta target as well
         if n_homomers > 1:
-            fasta_out = f"results/targets/{target_name}_A1/{target_name}.fasta"
+            fasta_out = f"results/targets/{target_name}_A1/{target_name}_A1.fasta"
             if not os.path.isfile(
             fasta_out
             ):
                 try:
                     os.makedirs(f"results/targets/{target_name}_A1", exist_ok=True)
                 except Exception as a:
-                    print(a)                
-                fasta_out = f"results/targets/{target_name}_A1/{target_name}.fasta"
+                    print(a)
+
                 with open(fasta_out, "w") as out:
                     for line in fasta[:2]:
                         out.write(f"{line}\n")
@@ -140,8 +141,8 @@ def parse_casp_target(sender, email_body):
                     out.write(f"{reply_email}\n")
                 with open(f"results/targets/{target_name}_A1/sender_address", "w") as out:
                     out.write(f"{sender}\n")
-                return [target_name, target_name + "_A1"]
-                
+            return [target_name, target_name + "_A1"]
+
     return target_name
 
 
@@ -160,7 +161,11 @@ def check_email_for_new_targets():
             if is_casp_target(str(body)):
                 sender_email = re.findall(email_regex, sender)[0]
                 target_name = parse_casp_target(sender_email, str(body))
-                new_targets.extend(target_name)
+                if type(target_name) is list:
+                    new_targets.extend(target_name)
+                else:
+                    new_targets.append(target_name)
+                print(new_targets)
             else:  # email from sender in whitelist but not a target?
                 pass
 
@@ -272,7 +277,7 @@ def get_n_gpus(fasta_file):
         n_gpus = 3
     elif fasta_length < 3000:
         n_gpus = 4
-    elif fasta_length < 4500:
+    elif fasta_length < 5000:
         n_gpus = 8
     else:
         n_gpus = 16
