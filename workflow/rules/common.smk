@@ -23,10 +23,6 @@ if workflow.use_env_modules:
 envvars:
     "EMAIL_PASS",
 
-
-IS_CASP = False
-
-
 def get_messages():
     server = config["mail_server"]
     username = config["server_address"]
@@ -53,7 +49,15 @@ def get_messages():
                 subject = message["subject"]
                 if message.is_multipart():
                     mail_content = ""
-                    for part in message.get_payload():
+                    for part in message.walk():
+                        fileName = part.get_filename()
+                        
+                        if fileName:
+                            filePath = os.path.join("results/targets/", fileName)
+                            if not os.path.isfile(filePath) :
+                                fp = open(filePath, 'wb')
+                                fp.write(part.get_payload(decode=True))
+                                fp.close()
                         if part.get_content_type() == "text/plain":
                             mail_content += part.get_payload()
             else:
@@ -63,85 +67,13 @@ def get_messages():
     return emails
 
 
-def is_casp_target(email_body):
-    IS_CASP = "TARGET=" in email_body
-    return IS_CASP
+def parse_target(sender, email_body):
+    
+    # acknowledgement is always sent back to sender
+    with open(f"results/targets/{target_name}/sender_address", "w") as out:
+        out.write(f"{sender}\n")
 
-
-def parse_casp_target(sender, email_body):
-    target_name = re.findall("TARGET=([a-zA-Z0-9]+)", email_body)[0]
-    reply_email = re.findall("REPLY[\-EMAIL]*=([a-zA-Z0-9@.]+)", email_body)[0]
-
-    stoichiometry = "A1" # A1 is the default in case the field is not in the email
-    re_sto = re.findall("STOICHIOMETRY=([a-zA-Z0-9:]+)", email_body)
-    if re_sto:
-        stoichiometry = re_sto[0]
-
-    chain_units = re.findall("([A-Z]+)([0-9]+)", stoichiometry)  # e.g. A16B8 -> [('A', '16'), ('B', '8')]
-    heteromer = re.findall(r"(>[ a-zA-Z0-9]+.*[|])[\s]+([A-Z]+)", email_body)
-
-    #mono_or_homomer = re.findall("SEQUENCE=([A-Z]+)", email_body)
-    mono_or_homomer = re.findall("SEQUENCE=([A-Z\s]+)REPLY", email_body)
-    fasta = []
-    n_homomers = 1
-    if mono_or_homomer:
-        n_homomers = int(list(chain_units)[0][1])
-        for homomer in range(n_homomers):
-            fasta.append(f"> {target_name}_{homomer}")
-            fasta.append(re.sub("\s", "", mono_or_homomer[0]))
-            #fasta.append(mono_or_homomer[0])
-    elif heteromer:
-        for i, (chain, units) in enumerate(chain_units):
-            this_chain_header = heteromer[i][0]
-            this_chain_sequence = heteromer[i][1]
-
-            for homo_repeat in range(int(units)):
-                fasta.append(f"{this_chain_header}_{homo_repeat}")
-                fasta.append(this_chain_sequence)
-    else:
-        print("Wrong query format")
-    if fasta:
-        print(stoichiometry, heteromer)
-        try:
-            os.makedirs(f"results/targets/{target_name}", exist_ok=True)
-        except Exception as a:
-            print(a)
-
-        fasta_out = f"results/targets/{target_name}/{target_name}.fasta"
-        if not os.path.isfile(
-            fasta_out
-        ):  # avoid triggering re-execution if file was already there
-            with open(fasta_out, "w") as out:
-                for line in fasta:
-                    out.write(f"{line}\n")
-
-            # results are sent to address specified in email body, not to sender
-            with open(f"results/targets/{target_name}/mail_results_to", "w") as out:
-                out.write(f"{reply_email}\n")
-            # acknowledgement is always sent back to sender
-            with open(f"results/targets/{target_name}/sender_address", "w") as out:
-                out.write(f"{sender}\n")
-
-        # homodimers etc, need to write the monomer fasta target as well
-        if n_homomers > 1:
-            fasta_out = f"results/targets/{target_name}_A1/{target_name}_A1.fasta"
-            if not os.path.isfile(
-            fasta_out
-            ):
-                try:
-                    os.makedirs(f"results/targets/{target_name}_A1", exist_ok=True)
-                except Exception as a:
-                    print(a)
-
-                with open(fasta_out, "w") as out:
-                    for line in fasta[:2]:
-                        out.write(f"{line}\n")
-
-                with open(f"results/targets/{target_name}_A1/mail_results_to", "w") as out:
-                    out.write(f"{reply_email}\n")
-                with open(f"results/targets/{target_name}_A1/sender_address", "w") as out:
-                    out.write(f"{sender}\n")
-            return [target_name, target_name + "_A1"]
+    # find fasta input, parse, md5, write to disk
 
     return target_name
 
@@ -158,9 +90,9 @@ def check_email_for_new_targets():
         if re.findall(email_regex, sender)[0] in whitelist:
             if type(body) is list:
                 body = body[0]
-            if is_casp_target(str(body)):
+            if is_target(str(body)):
                 sender_email = re.findall(email_regex, sender)[0]
-                target_name = parse_casp_target(sender_email, str(body))
+                target_name = parse_target(sender_email, str(body))
                 if type(target_name) is list:
                     new_targets.extend(target_name)
                 else:
@@ -199,10 +131,10 @@ def send_email(mail_from, mail_to, mail_subject, mail_body):
         return False
 
 
-def send_ack(to, target_name, group_name):
+def send_ack(to, target_name):
     mail_from = config["server_address"]
 
-    mail_subject = f"{target_name} - query received by {group_name}"
+    mail_subject = f"{target_name} - query received"
     mail_body = ""
     mail_to = (
         [to] if "@" in to else [address.strip() for address in open(to).readlines()]
@@ -211,10 +143,9 @@ def send_ack(to, target_name, group_name):
     return success
 
 
-def send_models(to_file, target_name, models, group_name):
+def send_models(to_file, target_name, models):
     mail_from = config["server_address"]
-    target_name = re.sub("_A1", "", target_name) # monomer version of homomer
-    mail_subject = f"{target_name} - {group_name}"
+    mail_subject = f"{target_name}"
     mail_body = open(models).read()
     mail_to = [address.strip() for address in open(to_file).readlines()]
 
@@ -227,7 +158,7 @@ def check_fs_for_new_targets():
     targets_with_fastas = [
         Path(fasta_path).parts[2] for fasta_path in fastas
     ]  # [os.path.basename(fasta).rstrip(".fasta") for fasta in fastas]
-    # if a "msas" folder is in the target's results path it's likely being run on slurm, so we skip it
+    
     slurm_running = glob.glob("results/AF_models/*/.slurm_running")
     targets_with_slurm = [Path(path).parts[2] for path in slurm_running]
     return [
@@ -271,16 +202,10 @@ def get_n_gpus(fasta_file):
 
     if fasta_length < 800:
         pass
-    elif fasta_length < 1600:
+    elif fasta_length < 4000:
         n_gpus = 2
-    elif fasta_length < 2000:
-        n_gpus = 3
-    elif fasta_length < 3000:
-        n_gpus = 4
-    elif fasta_length < 5000:
-        n_gpus = 8
     else:
-        n_gpus = 16
+        n_gpus = 8
 
     return n_gpus
 
