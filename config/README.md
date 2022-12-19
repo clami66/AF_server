@@ -1,3 +1,5 @@
+## config.yaml
+
 ```yaml
 # E-mail settings
 server_address: "user@server.com" ### server mailbox address
@@ -24,4 +26,20 @@ CASP_sender: "casp-meta@predictioncenter.org"
 data_server_user: "user"
 data_server_address: "server.com"
 data_server_folder: "/path"
+```
+## envmodules.yaml
+
+```yaml
+envmodules:
+  run_alphafold: # specifies envmodules to load when executing rule `run_alphafold`
+    - Anaconda/2021.05-nsc1
+    - AlphaFold/2.2.1
+    - other envmodules...
+```
+
+## whitelist
+
+```
+allowed_sender@mail.com # one email per line
+another_allowed_sender@server.net
 ```
