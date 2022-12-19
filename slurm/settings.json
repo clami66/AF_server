@@ -1,0 +1,6 @@
+{
+    "SBATCH_DEFAULTS": "account=project-id --mail-user=user@server.com --mail-type=END,FAIL,TIME_LIMIT job-name={rule}-{wildcards} output=logs/slurm/{wildcards.target}-%j.out",
+    "CLUSTER_NAME": "slurm",
+    "CLUSTER_CONFIG": "",
+    "ADVANCED_ARGUMENT_CONVERSION": "no"
+}
