@@ -1,4 +1,4 @@
-```
+```yaml
 # E-mail settings
 server_address: "user@server.com" ### server mailbox address
 mail_server: "server.com"  ### server mailbox domain
