@@ -1,7 +1,6 @@
 # Snakemake workflow: `AF_server`
 
 [![Snakemake](https://img.shields.io/badge/snakemake-≥6.3.0-brightgreen.svg)](https://snakemake.github.io)
-[![GitHub actions status](https://github.com/clami66/AF_server/workflows/Tests/badge.svg?branch=main)](https://github.com/clami66/AF_server/actions?query=branch%3Amain+workflow%3ATests)
 
 
 A Snakemake workflow to serve AlphaFold queries through an email server
