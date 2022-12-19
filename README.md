@@ -1,7 +1,7 @@
 # Snakemake workflow: `AF_server`
 
 [![Snakemake](https://img.shields.io/badge/snakemake-≥6.3.0-brightgreen.svg)](https://snakemake.github.io)
-[![GitHub actions status](https://github.com/<owner>/<repo>/workflows/Tests/badge.svg?branch=main)](https://github.com/<owner>/<repo>/actions?query=branch%3Amain+workflow%3ATests)
+[![GitHub actions status](https://github.com/clami66/AF_server/workflows/Tests/badge.svg?branch=main)](https://github.com/clami66/AF_server/actions?query=branch%3Amain+workflow%3ATests)
 
 
 A Snakemake workflow to serve AlphaFold queries through an email server
@@ -9,7 +9,7 @@ A Snakemake workflow to serve AlphaFold queries through an email server
 
 ## Setup
 
-0. [Install Snakemake](https://snakemake.readthedocs.io/en/stable/getting_started/installation.html)
+0. [Install Snakemake](https://snakemake.readthedocs.io/en/stable/getting_started/installation.html), set up AlphaFold
 1. Clone this repository
 2. Edit the configuration file `config/config.yaml` (see README inside the `config/` directory)
 3. If on HPC, edit `config/envmodules.yaml` to load necessary modules through `module load`
@@ -91,6 +91,6 @@ When the target has been modelled, it sends the models as PDB coordinates pasted
 It is also possible to upload the AlphaFold outputs to a separate server for backup or so that users can access MSAs, pickle files etc. The access must be configured through public/private key and be passwordless (e.g. the server must be able to run rsync to the server without password prompt).
 
 ```
-snakemake -j 1--rerun-incomplete --cores 1 upload_msas # upload MSAs only
-snakemake -j 1--rerun-incomplete --cores 1 upload_models # upload models, pickle files
+snakemake -j 1 --rerun-incomplete --cores 1 upload_msas # upload MSAs only
+snakemake -j 1 --rerun-incomplete --cores 1 upload_models # upload models, pickle files
 ```
